@@ -6,10 +6,13 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
     
-    @State private var users = [User]()
+    @Environment(\.modelContext) var modelContext
+    
+    @Query(sort: \User.name) private var users: [User]
     
     var body: some View {
         NavigationView {
@@ -32,24 +35,30 @@ struct ContentView: View {
     
     func fetchData() async{
         // for the purpose of this project, the list is constant, so avoiding fetching the data on every refresh is a good thing in this scenario
-        if(users.isEmpty){
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let url = URL(string: "https://www.hackingwithswift.com/samples/friendface.json")!
+        guard users.isEmpty else { return }
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let url = URL(string: "https://www.hackingwithswift.com/samples/friendface.json")!
+        
+        let request = URLRequest(url: url)
+        
+        let session = URLSession.shared
+        
+        do {
+            let (data, _) = try await session.data(for: request)
             
-            let request = URLRequest(url: url)
+            let decodedData = try decoder.decode([User].self, from: data)
             
-            let session = URLSession.shared
+            let insertContext = ModelContext(modelContext.container)
             
-            do {
-                let (data, _) = try await session.data(for: request)
-                
-                let decodedData = try decoder.decode([User].self, from: data)
-                
-                users = decodedData
-            } catch {
-                print("Error fetching or decoding data: \(error)")
+            for user in decodedData {
+                insertContext.insert(user)
             }
+            
+            try insertContext.save()
+        } catch {
+            print("Error fetching or decoding data: \(error)")
         }
     }
 }
